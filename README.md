@@ -184,8 +184,8 @@ green-wave synchronization.
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Install local dashboard dependencies
+pip install -r requirements-dashboard.txt
 
 # 3a. Quick terminal smoke test (no browser needed)
 python run_demo.py --with-events
@@ -195,6 +195,15 @@ streamlit run dashboard/app.py
 ```
 
 Then open the URL Streamlit prints (usually `http://localhost:8501`).
+
+### Deploying the Vercel version
+
+The Vercel deployment uses the lightweight API in `api/index.py` and the
+browser dashboard in `public/index.html`; it does not run Streamlit. Push the
+repository to GitHub, import it in Vercel, and deploy from the repository root.
+Vercel automatically detects `api/index.py` as the Python function and serves
+`public/index.html` as the frontend. The frontend calls `/api/simulate` for a
+scenario run. The original Streamlit dashboard remains available locally.
 
 ### Dashboard walkthrough for a demo
 
