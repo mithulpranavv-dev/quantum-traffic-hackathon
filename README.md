@@ -202,8 +202,13 @@ The Vercel deployment uses the lightweight API in `api/index.py` and the
 browser dashboard in `public/index.html`; it does not run Streamlit. Push the
 repository to GitHub, import it in Vercel, and deploy from the repository root.
 Vercel automatically detects `api/index.py` as the Python function and serves
-`public/index.html` as the frontend. The frontend calls `/api/simulate` for a
-scenario run. The original Streamlit dashboard remains available locally.
+`public/index.html` as the frontend. The frontend calls `/api/health`,
+`/api/simulate`, and `/api/compare`. It now exposes the same simulation
+controls as the local dashboard: all three controllers, QAOA tuning,
+congestion spikes, accidents, road closures, ambulance routing, event timing,
+network state, metrics, and controller comparison. Each Vercel request is a
+fresh scenario because serverless functions are stateless; the local Streamlit
+dashboard remains the interactive step-by-step version.
 
 ### Dashboard walkthrough for a demo
 

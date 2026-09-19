@@ -22,30 +22,56 @@ def _json_safe(value):
 
 
 def _run_controller(options: dict, controller: str) -> dict:
-    intersections = int(options.get("intersections", 6))
+    intersections = min(max(int(options.get("intersections", 6)), 4), 8)
     steps = min(max(int(options.get("steps", 12)), 1), 40)
     seed = int(options.get("seed", 42))
     decision_interval = min(max(int(options.get("decision_interval", 3)), 1), 6)
     coordination_weight = min(max(float(options.get("coordination_weight", 2.0)), 0), 10)
+    qaoa_reps = min(max(int(options.get("qaoa_reps", 1)), 1), 4)
+    qaoa_maxiter = min(max(int(options.get("qaoa_maxiter", 20)), 20), 300)
+    event_step = min(max(int(options.get("event_step", max(1, steps // 4))), 0), steps - 1)
     network = TrafficNetwork(n_intersections=intersections, seed=seed)
     corridor = EmergencyCorridor()
     simulator = TrafficSimulator(
         network,
         controller_type=controller,
         decision_interval=decision_interval,
-        qaoa_reps=1,
-        qaoa_maxiter=20,
+        qaoa_reps=qaoa_reps,
+        qaoa_maxiter=qaoa_maxiter,
         coordination_weight=coordination_weight,
         seed=seed,
         corridor=corridor,
     )
 
-    if options.get("spike"):
-        network.trigger_congestion_spike(0, direction="EW", magnitude=0.5)
-    if options.get("ambulance") and intersections > 1:
-        corridor.activate(network, 0, intersections - 1, steps_per_node=2)
+    event_log = []
+    for step in range(steps):
+        if step == event_step:
+            if options.get("spike"):
+                event_log.append(network.trigger_congestion_spike(0, direction="EW", magnitude=0.5))
+            accident_node = options.get("accident_node")
+            if options.get("accident") and accident_node is not None:
+                event_log.append(network.trigger_accident(min(max(int(accident_node), 0), intersections - 1)))
+            closure = options.get("closure") or {}
+            if options.get("road_closure") and closure:
+                closure_from = min(max(int(closure["from"]), 0), intersections - 1)
+                closure_to = min(max(int(closure["to"]), 0), intersections - 1)
+                event_log.append(network.trigger_road_closure(closure_from, closure_to))
+            if options.get("ambulance") and intersections > 1:
+                start = min(max(int(options.get("ambulance_start", 0)), 0), intersections - 1)
+                end = min(max(int(options.get("ambulance_end", intersections - 1)), 0), intersections - 1)
+                try:
+                    path = corridor.activate(
+                        network,
+                        start,
+                        end,
+                        steps_per_node=int(options.get("steps_per_node", 2)),
+                    )
+                    event_log.append({"type": "ambulance", "start": start, "end": end, "path": path})
+                except Exception as error:
+                    event_log.append({"type": "ambulance_error", "error": str(error)})
+        simulator.step()
 
-    history = simulator.run(steps)
+    history = simulator.history
     nodes = []
     for node in network.nodes():
         state = network.graph.nodes[node]
@@ -66,6 +92,11 @@ def _run_controller(options: dict, controller: str) -> dict:
         "controller": controller,
         "metrics": compute_metrics(history),
         "history": history,
+        "events": event_log,
+        "qaoa_backend": next(
+            (record["qaoa"]["backend"] for record in reversed(history) if record.get("qaoa")),
+            None,
+        ),
         "nodes": nodes,
         "edges": [
             {"from": u, "to": v, "status": data["status"]}
