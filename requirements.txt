@@ -1,0 +1,13 @@
+# Core
+networkx>=3.2,<4.0
+numpy>=1.26,<2.3
+scipy>=1.11,<2.0
+
+# Quantum (QAOA runs on Qiskit's local statevector simulator -- no
+# account, API key, or real quantum hardware needed)
+qiskit>=1.0,<2.1
+
+# Dashboard
+streamlit>=1.32,<2.0
+matplotlib>=3.8,<4.0
+pandas>=2.1,<3.0
