@@ -105,7 +105,7 @@ def draw_network(network: TrafficNetwork, corridor: EmergencyCorridor):
     if not pos:
         pos = nx.spring_layout(g, seed=1)
 
-    fig, ax = plt.subplots(figsize=(5, 4))
+    fig, ax = plt.subplots(figsize=(8, 5.5), constrained_layout=True)
 
     queue_totals = [sum(g.nodes[n]["queue"].values()) for n in g.nodes]
     vmax = max(queue_totals + [1])
@@ -113,7 +113,6 @@ def draw_network(network: TrafficNetwork, corridor: EmergencyCorridor):
     corridor_nodes = set(corridor.path) if corridor.is_active() else set()
     current_amb_node = corridor.current_node() if corridor.is_active() else None
 
-    node_colors = queue_totals
     node_edgecolors = [
         "red" if n == current_amb_node else ("orange" if n in corridor_nodes else "black") for n in g.nodes
     ]
@@ -126,29 +125,52 @@ def draw_network(network: TrafficNetwork, corridor: EmergencyCorridor):
         edge_styles.append("dashed" if data["status"] == "closed" else "solid")
         edge_colors.append("orange" if on_corridor else ("lightgrey" if data["status"] == "closed" else "grey"))
 
-    node_colors = [0 if g.nodes[n].get("isolated", False) else queue_totals[i] for i, n in enumerate(g.nodes)]
-    node_edgecolors = [
-        "black" if g.nodes[n].get("isolated", False) else edge_color
-        for n, edge_color in zip(g.nodes, node_edgecolors)
-    ]
-
     nx.draw_networkx_edges(g, pos, ax=ax, edge_color=edge_colors, style=edge_styles, width=2)
-    nodes = nx.draw_networkx_nodes(
+    active_nodes = [n for n in g.nodes if not g.nodes[n].get("isolated", False)]
+    isolated_nodes = [n for n in g.nodes if g.nodes[n].get("isolated", False)]
+    active_indices = [list(g.nodes).index(n) for n in active_nodes]
+    active_plot = nx.draw_networkx_nodes(
         g,
         pos,
         ax=ax,
-        node_color=node_colors,
+        nodelist=active_nodes,
+        node_color=[queue_totals[i] for i in active_indices],
         cmap="YlOrRd",
         vmin=0,
         vmax=vmax,
-        node_size=700,
-        edgecolors=node_edgecolors,
-        linewidths=node_linewidths,
+        node_size=900,
+        edgecolors=[node_edgecolors[i] for i in active_indices],
+        linewidths=[node_linewidths[i] for i in active_indices],
     )
-    labels = {n: f"{n}\n{'NS' if g.nodes[n]['phase'] == 0 else 'EW'}\u25CF" for n in g.nodes}
-    nx.draw_networkx_labels(g, pos, labels=labels, ax=ax, font_size=8)
-    fig.colorbar(nodes, ax=ax, label="Total queue length", shrink=0.8)
-    ax.set_title("Road network -- grey node = isolated, ring = ambulance route")
+    if isolated_nodes:
+        nx.draw_networkx_nodes(
+            g,
+            pos,
+            ax=ax,
+            nodelist=isolated_nodes,
+            node_color="#9ca3af",
+            node_size=900,
+            edgecolors="#111827",
+            linewidths=2.0,
+            node_shape="s",
+        )
+    labels = {
+        n: f"{n}\n{'BLOCKED' if g.nodes[n].get('isolated', False) else ('NS' if g.nodes[n]['phase'] == 0 else 'EW')}"
+        for n in g.nodes
+    }
+    nx.draw_networkx_labels(g, pos, labels=labels, ax=ax, font_size=8, font_weight="bold")
+    if active_nodes:
+        fig.colorbar(active_plot, ax=ax, label="Queue length", shrink=0.75, pad=0.03)
+    ax.set_title("Traffic network", fontsize=13, fontweight="bold", pad=12)
+    ax.text(
+        0.02,
+        0.02,
+        "Square = isolated   Orange ring = ambulance route",
+        transform=ax.transAxes,
+        fontsize=8,
+        color="#4b5563",
+    )
+    ax.margins(0.25)
     ax.axis("off")
     return fig
 
