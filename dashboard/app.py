@@ -126,6 +126,12 @@ def draw_network(network: TrafficNetwork, corridor: EmergencyCorridor):
         edge_styles.append("dashed" if data["status"] == "closed" else "solid")
         edge_colors.append("orange" if on_corridor else ("lightgrey" if data["status"] == "closed" else "grey"))
 
+    node_colors = [0 if g.nodes[n].get("isolated", False) else queue_totals[i] for i, n in enumerate(g.nodes)]
+    node_edgecolors = [
+        "black" if g.nodes[n].get("isolated", False) else edge_color
+        for n, edge_color in zip(g.nodes, node_edgecolors)
+    ]
+
     nx.draw_networkx_edges(g, pos, ax=ax, edge_color=edge_colors, style=edge_styles, width=2)
     nodes = nx.draw_networkx_nodes(
         g,
@@ -142,7 +148,7 @@ def draw_network(network: TrafficNetwork, corridor: EmergencyCorridor):
     labels = {n: f"{n}\n{'NS' if g.nodes[n]['phase'] == 0 else 'EW'}\u25CF" for n in g.nodes}
     nx.draw_networkx_labels(g, pos, labels=labels, ax=ax, font_size=8)
     fig.colorbar(nodes, ax=ax, label="Total queue length", shrink=0.8)
-    ax.set_title("Road network -- node color = congestion, ring = ambulance route")
+    ax.set_title("Road network -- grey node = isolated, ring = ambulance route")
     ax.axis("off")
     return fig
 
@@ -161,6 +167,8 @@ def node_state_table(network: TrafficNetwork) -> pd.DataFrame:
                 "Density EW": round(node["density"]["EW"], 2),
                 "Capacity": node["capacity"],
                 "Emergency lock": node.get("emergency_lock"),
+                "Status": "Isolated" if node.get("isolated", False) else "Active",
+                "Isolation reason": node.get("isolation_reason"),
             }
         )
     return pd.DataFrame(rows)
@@ -261,7 +269,25 @@ with tab_live:
                 st.session_state.network.reopen_road(u, v)
             st.toast("All roads reopened")
 
-        st.header("5. Emergency vehicle")
+        st.header("5. Node isolation")
+        isolation_node = st.selectbox("Node to isolate", nodes, key="isolation_node")
+        isolation_reason = st.text_area(
+            "Reason for blocking this node",
+            key="isolation_reason_input",
+            placeholder="e.g. Flooding, maintenance, or a safety incident",
+        )
+        isolate_a, isolate_b = st.columns(2)
+        if isolate_a.button("Isolate node"):
+            if not isolation_reason.strip():
+                st.error("Enter a reason before isolating the node.")
+            else:
+                st.session_state.network.isolate_node(isolation_node, isolation_reason)
+                st.toast(f"Isolated node {isolation_node}")
+        if isolate_b.button("Release node"):
+            st.session_state.network.release_node(isolation_node)
+            st.toast(f"Released node {isolation_node}")
+
+        st.header("6. Emergency vehicle")
         amb_start = st.selectbox("Ambulance start", nodes, key="amb_start")
         amb_end = st.selectbox("Ambulance destination", nodes, key="amb_end", index=len(nodes) - 1)
         steps_per_node = st.slider("Ambulance speed (steps/intersection)", 1, 5, 2)

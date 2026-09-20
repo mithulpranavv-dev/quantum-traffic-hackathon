@@ -122,6 +122,8 @@ class TrafficNetwork:
                 phase=self.rng.randint(0, 1),
                 axis=main_axis,
                 emergency_lock=None,  # set to required phase while an ambulance is passing
+                isolated=False,
+                isolation_reason=None,
             )
 
     # ------------------------------------------------------------------
@@ -136,16 +138,26 @@ class TrafficNetwork:
 
     def set_phase(self, node: int, phase: int) -> None:
         """Set a node's signal phase, respecting an active emergency lock."""
+        if self.graph.nodes[node].get("isolated", False):
+            return
         lock = self.graph.nodes[node].get("emergency_lock")
         self.graph.nodes[node]["phase"] = lock if lock is not None else phase
 
     def total_queue(self) -> int:
-        return sum(sum(self.graph.nodes[n]["queue"].values()) for n in self.graph.nodes)
+        return sum(
+            sum(self.graph.nodes[n]["queue"].values())
+            for n in self.graph.nodes
+            if not self.graph.nodes[n].get("isolated", False)
+        )
 
     def open_neighbors(self, node: int):
         """Neighbours reachable via an open (non-closed) road."""
         for nbr in self.graph.neighbors(node):
-            if self.graph.edges[node, nbr]["status"] == "open":
+            if (
+                self.graph.edges[node, nbr]["status"] == "open"
+                and not self.graph.nodes[node].get("isolated", False)
+                and not self.graph.nodes[nbr].get("isolated", False)
+            ):
                 yield nbr
 
     # ------------------------------------------------------------------
@@ -190,15 +202,44 @@ class TrafficNetwork:
         if self.graph.has_edge(node_a, node_b):
             self.graph.edges[node_a, node_b]["status"] = "open"
 
+    def isolate_node(self, node: int, reason: str) -> dict:
+        """Remove a node from traffic processing and all open-road routing."""
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("An isolation reason is required")
+        self.graph.nodes[node]["isolated"] = True
+        self.graph.nodes[node]["isolation_reason"] = reason
+        self.graph.nodes[node]["emergency_lock"] = None
+        for nbr in self.graph.neighbors(node):
+            self.graph.edges[node, nbr]["status"] = "closed"
+        event = {"type": "node_isolation", "node": node, "reason": reason}
+        self._active_events.append(event)
+        return event
+
+    def release_node(self, node: int) -> None:
+        """Return an isolated node to service and reopen its incident roads."""
+        self.graph.nodes[node]["isolated"] = False
+        self.graph.nodes[node]["isolation_reason"] = None
+        for nbr in self.graph.neighbors(node):
+            self.graph.edges[node, nbr]["status"] = "open"
+
     def routing_view(self) -> nx.Graph:
         """A view of the graph containing only currently-open edges, for
         pathfinding (used by the emergency corridor and by throughput
         calculations)."""
         open_edges = [
-            (u, v) for u, v, d in self.graph.edges(data=True) if d["status"] == "open"
+            (u, v)
+            for u, v, d in self.graph.edges(data=True)
+            if d["status"] == "open"
+            and not self.graph.nodes[u].get("isolated", False)
+            and not self.graph.nodes[v].get("isolated", False)
         ]
         g = nx.Graph()
-        g.add_nodes_from(self.graph.nodes(data=True))
+        g.add_nodes_from(
+            (node, data)
+            for node, data in self.graph.nodes(data=True)
+            if not data.get("isolated", False)
+        )
         g.add_edges_from((u, v, self.graph.edges[u, v]) for u, v in open_edges)
         return g
 

@@ -82,6 +82,8 @@ class TrafficSimulator:
     def _generate_arrivals(self) -> None:
         for n in self.network.nodes():
             node = self.network.graph.nodes[n]
+            if node.get("isolated", False):
+                continue
             for d in ("NS", "EW"):
                 rate = node["density"][d] * ARRIVAL_RATE_SCALE
                 arrivals = int(self.rng.poisson(rate))
@@ -115,6 +117,8 @@ class TrafficSimulator:
         total_discharged = 0
         for n in self.network.nodes():
             node = self.network.graph.nodes[n]
+            if node.get("isolated", False):
+                continue
             green_dir = "NS" if node["phase"] == 0 else "EW"
             red_dir = "EW" if green_dir == "NS" else "NS"
 

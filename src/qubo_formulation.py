@@ -82,6 +82,8 @@ def build_qubo(
     # ---- (1) local congestion term ----
     for n in network.nodes():
         node = network.graph.nodes[n]
+        if node.get("isolated", False):
+            continue
         # Congestion pressure = density weighted by queue length, so a
         # long queue in a currently-low-density direction still counts.
         pressure_ns = node["density"]["NS"] * (1 + node["queue"]["NS"])
@@ -93,7 +95,11 @@ def build_qubo(
 
     # ---- (2) coordination term: (x_i - x_j)^2 = x_i + x_j - 2 x_i x_j ----
     for u, v, data in network.graph.edges(data=True):
-        if data["status"] != "open":
+        if (
+            data["status"] != "open"
+            or network.graph.nodes[u].get("isolated", False)
+            or network.graph.nodes[v].get("isolated", False)
+        ):
             continue  # a closed road has nothing to coordinate
         edge_load = data.get("capacity", 10)
         edge_congestion = (
